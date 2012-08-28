@@ -1,63 +1,54 @@
-#
-# sprunge.rb: ruby clone of http://sprunge.us, see
-# https://github.com/rupa/sprunge
-#
-# This program is free software. It comes without any warranty, to
-# the extent permitted by applicable law. You can redistribute it
-# and/or modify it under the terms of the Do What The Fuck You Want
-# To Public License, Version 2, as published by Sam Hocevar. See
-# http://sam.zoy.org/wtfpl/COPYING for more details. 
-#
-
 require 'sinatra'
-require 'mongo'
+require 'redis'
 require 'coderay'
 
-domain = 'localhost:4567'
-post_key = 'localhost' 
-database = 'sprunge'
-entries = 10 
+ALPHABET = ('A'..'Z').to_a + ('a'..'z').to_a
 
-collection = Mongo::Connection.new.db(database)['sprunge']
+helpers do
+  def redis
+    @r ||= Redis.new
+  end
 
-get '/' do
-	# show your homepage here
-	redirect to('http://www.google.com')
+  def get_random_key
+    keys = redis.keys('[a-zA-Z][a-zA-Z][a-zA-Z][a-zA-Z]')
+    if keys.size == 7311616
+      keys.first
+    else
+      key = nil
+      begin
+        key = 4.times.map { ALPHABET.shuffle[rand(0..51)] }.join
+      end while keys.include?(key)
+      key
+    end
+  end
 end
 
-get %r{^/([A-Za-z0-9\-_]{16})$} do |base64_id|
-	# decode the id
-	id = BSON::ObjectId.new(Base64.urlsafe_decode64(base64_id).bytes.to_a)
-	document = collection.find(:_id => id).first
-
-	text = document['text']
-	lang = request.GET.keys.first
-	
-	if document and lang
-		body CodeRay::Duo[lang, :div].highlight(text)
-	elsif document
-		headers 'Content-Type' => 'text/plain'
-		body text
-	else
-		redirect to('/')
-	end
+get '/' do
+  headers 'Content-Type' => 'text/plain'
+  body 'DAMIANO GAY'
 end
 
 post '/' do
-	if collection.find.count >= entries
-		# find and remove the oldest document
-		document = collection.find.sort([:date, :desc]).first
-		collection.remove(document)
-	end
-
-	# insert the new document 
-	document = {:date => Time.now, :text => request.POST[post_key]} 
-	id = collection.insert(document)
-	# get the encoded id
-	base64_id = Base64.urlsafe_encode64(id.to_a.map{ |i| i.chr }.join)
-	response_url = 'http://' + domain + '/' + base64_id + "\n"
-
-	headers 'Content-Type' => 'text/plain'
-	body response_url
+  headers 'Content-Type' => 'text/plain'
+  content = request.POST['sprunge']
+  unless content.empty?
+    key = get_random_key
+    redis[key] = content
+    body key
+  end
 end
 
+get '/:id' do
+  b = redis[params[:id]]
+  if b
+    lang = request.env['QUERY_STRING'].strip
+    if lang.empty?
+      headers 'Content-Type' => 'text/plain'
+      body b
+    else
+      body CodeRay.scan(b, lang).html(:wrap => :page, :line_numbers => :table, :line_number_anchors => 'n-', :tab_width => 2, :title => params[:id])
+    end
+  else
+    ''
+  end
+end
