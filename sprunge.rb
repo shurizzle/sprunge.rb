@@ -42,6 +42,7 @@ get '/:id' do
   b = redis[params[:id]]
   if b
     lang = request.env['QUERY_STRING'].strip
+    lang = CodeRay::FileType::TypeFromExt[lang] || CodeRay::FileType::TypeFromExt[lang.downcase] || lang
     if lang.empty?
       headers 'Content-Type' => 'text/plain'
       body b
