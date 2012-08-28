@@ -25,7 +25,7 @@ end
 
 get '/' do
   headers 'Content-Type' => 'text/plain'
-  body 'DAMIANO GAY'
+  body 'SHURIZZLE GAY'
 end
 
 post '/' do
